@@ -1,0 +1,14 @@
+[Unit]
+Description=MQTT Display on SPI Screen
+After=network.target
+
+[Service]
+ExecStart="/home/igino/Scaricati/python/screen 3.5/prova/main"
+WorkingDirectory=/home/igino/Scaricati/python/screen 3.5/prova/
+StandardOutput=inherit
+StandardError=inherit
+Restart=always
+User=igino
+
+[Install]
+WantedBy=multi-user.target

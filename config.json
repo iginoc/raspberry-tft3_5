@@ -1,0 +1,6 @@
+{
+    "password": "mqtt_pw",
+    "server": "192.168.188.41",
+    "topic": "casa/sensor/pebble_chat",
+    "user": "mqtt_user"
+}
