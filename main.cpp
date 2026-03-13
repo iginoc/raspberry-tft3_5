@@ -42,13 +42,13 @@ mutex msg_mutex; // Per proteggere l'accesso a mqtt_message tra thread
 bool running = true;
 
 // --- Gestione Segnali (CTRL+C) ---
-void signal_handler(int signum) {
+void signal_handler(int) {
     cout << "\nInterruzione manuale (CTRL+C)" << endl;
     running = false;
 }
 
 // --- Callback MQTT ---
-int msgarrvd(void *context, char *topicName, int topicLen, MQTTClient_message *message) {
+int msgarrvd(void *, char *topicName, int, MQTTClient_message *message) {
     lock_guard<mutex> lock(msg_mutex);
     if (message->payloadlen > 0) {
         mqtt_message = string((char*)message->payload, message->payloadlen);
@@ -60,13 +60,13 @@ int msgarrvd(void *context, char *topicName, int topicLen, MQTTClient_message *m
     return 1;
 }
 
-void connlost(void *context, char *cause) {
+void connlost(void *, char *cause) {
     lock_guard<mutex> lock(msg_mutex);
     mqtt_message = "Conn Lost";
     cout << "Connessione MQTT persa. Causa: " << (cause ? cause : "Sconosciuta") << endl;
 }
 
-int main(int argc, char* argv[]) {
+int main() {
     // Registra gestore per CTRL+C
     signal(SIGINT, signal_handler);
 
@@ -128,17 +128,71 @@ int main(int argc, char* argv[]) {
     }
 
     // --- 3. Setup Grafica e Framebuffer ---
-    setenv("SDL_VIDEODRIVER", "dummy", 1); // Usa driver dummy come in Python
-    setenv("SDL_MOUSEDRV", "evdev", 1);    // Forza l'uso degli eventi di input Linux
-    setenv("SDL_MOUSE_RELATIVE", "0", 1);  // Imposta modalità assoluta (per touchscreen)
-
-    if (SDL_Init(SDL_INIT_VIDEO) < 0) {
-        cerr << "SDL Init Error: " << SDL_GetError() << endl;
-        return 1;
+    // Configurazione Hint per Input su Driver Dummy
+    SDL_SetHint(SDL_HINT_TOUCH_MOUSE_EVENTS, "1"); // Tratta il touch come mouse
+    SDL_SetHint(SDL_HINT_MOUSE_TOUCH_EVENTS, "1"); // Viceversa
+    SDL_SetHint(SDL_HINT_NO_SIGNAL_HANDLERS, "1"); // Evita conflitti con i segnali di sistema
+    
+    // Stampa i driver video disponibili per debug
+    cout << "Driver SDL disponibili: ";
+    for (int i = 0; i < SDL_GetNumVideoDrivers(); ++i) {
+        cout << SDL_GetVideoDriver(i) << " ";
     }
+    cout << endl;
+
+    // Tentativo 1: KMSDRM (Standard per Raspberry Pi recenti con driver VC4)
+    setenv("SDL_VIDEODRIVER", "kmsdrm", 1);
+    
+    if (SDL_Init(SDL_INIT_EVERYTHING) < 0) {
+        cout << "Driver kmsdrm fallito (" << SDL_GetError() << "). Tentativo 2: evdev..." << endl;
+        
+        // Tentativo 2: evdev (Visto che è presente nella tua lista driver!)
+        // Questo driver è specifico per gestire input senza output video grafico su embedded
+        setenv("SDL_VIDEODRIVER", "evdev", 1);
+        
+        if (SDL_Init(SDL_INIT_EVERYTHING) < 0) {
+            cout << "Driver evdev fallito (" << SDL_GetError() << "). Tentativo 3: fbcon..." << endl;
+            
+            // Tentativo 3: fbcon
+            setenv("SDL_VIDEODRIVER", "fbcon", 1);
+            setenv("SDL_FBDEV", "/dev/fb0", 1);
+
+            if (SDL_Init(SDL_INIT_EVERYTHING) < 0) {
+                cout << "Driver fbcon fallito (" << SDL_GetError() << "). Tentativo 4: dummy..." << endl;
+
+                // Tentativo 4: dummy (Fallback assoluto)
+                setenv("SDL_VIDEODRIVER", "dummy", 1);
+                if (SDL_Init(SDL_INIT_EVERYTHING) < 0) {
+                    cerr << "Errore critico SDL: " << SDL_GetError() << endl;
+                    return 1;
+                }
+            }
+        }
+    }
+    
+    cout << "Video Driver in uso: " << SDL_GetCurrentVideoDriver() << endl;
+
     if (TTF_Init() == -1) {
         cerr << "TTF Init Error: " << TTF_GetError() << endl;
         return 1;
+    }
+
+    // --- FIX INPUT: Creazione Finestra Fittizia ---
+    // Anche se usiamo il driver "dummy", SDL richiede una finestra logica per
+    // agganciare il focus della tastiera e del mouse/touch.
+    SDL_Window *window = SDL_CreateWindow("MQTT Touch Receiver", 0, 0, 480, 320, SDL_WINDOW_SHOWN | SDL_WINDOW_FULLSCREEN);
+    
+    // Forza la cattura dell'input sulla finestra
+    if (window) {
+        SDL_SetWindowGrab(window, SDL_TRUE);
+        SDL_RaiseWindow(window); // Tenta di portare la finestra in primo piano (focus)
+    }
+
+    // Debug: Verifica se SDL vede il touch
+    int num_touch = SDL_GetNumTouchDevices();
+    cout << "Info: Dispositivi Touch rilevati da SDL: " << num_touch << endl;
+    for(int i=0; i<num_touch; i++) {
+        cout << "  - Touch Device ID: " << SDL_GetTouchDevice(i) << endl;
     }
 
     // Creiamo una surface a 16-bit (RGB565) esplicita
@@ -176,8 +230,8 @@ int main(int argc, char* argv[]) {
         cerr << "Installa con: sudo apt install fonts-dejavu-core" << endl;
     }
 
-    SDL_Color white = {255, 255, 255};
-    SDL_Color red = {255, 0, 0};
+    SDL_Color white = {255, 255, 255, 255};
+    SDL_Color red = {255, 0, 0, 255};
 
     int touch_x = -1, touch_y = -1;
 
@@ -186,19 +240,45 @@ int main(int argc, char* argv[]) {
         // Gestione Eventi (Touchscreen/Mouse)
         SDL_Event event;
         while (SDL_PollEvent(&event)) {
+            // --- DEBUG INPUT: Decommenta per vedere i codici evento ---
+            cout << "Evento ricevuto: " << event.type << endl; 
+
             if (event.type == SDL_QUIT) {
                 running = false;
             } else if (event.type == SDL_KEYDOWN) {
+                cout << "Tasto premuto: " << event.key.keysym.sym << endl; // Debug tastiera
                 if (event.key.keysym.sym == SDLK_MINUS || event.key.keysym.sym == SDLK_KP_MINUS) {
                     running = false;
                 }
             } else if (event.type == SDL_MOUSEBUTTONDOWN) {
-                touch_x = event.button.x;
-                touch_y = event.button.y;
-                // Se si tocca l'angolo in alto a destra (area 50x50), esci
-                if (touch_x > 430 && touch_y < 50) {
-                    running = false;
-                }
+                // Ignoriamo i click del mouse 'grezzi' per il disegno perché spesso
+                // hanno coordinate fuori scala (es. 0-4096) con il driver evdev.
+                // Ci affidiamo a SDL_FINGER* qui sotto.
+                cout << "Mouse Raw: " << event.button.x << ", " << event.button.y << endl;
+            } else if (event.type == SDL_FINGERDOWN || event.type == SDL_FINGERMOTION) {
+                float x = event.tfinger.x;
+                float y = event.tfinger.y;
+
+                // --- CALIBRAZIONE TOUCH ---
+                // Se il tocco non corrisponde al dito, modifica queste flag:
+                bool swap_xy = true;  // Metti 'true' se muovendo X si muove Y (assi scambiati)
+                bool invert_x = false; // Metti 'true' se il tocco va al contrario in orizzontale
+                bool invert_y = true; // Metti 'true' se il tocco va al contrario in verticale
+
+                if (swap_xy) std::swap(x, y);
+                if (invert_x) x = 1.0f - x;
+                if (invert_y) y = 1.0f - y;
+
+                // Conversione da 0.0-1.0 a Pixel reali (480x320)
+                touch_x = (int)(x * 480);
+                touch_y = (int)(y * 320);
+
+                // Verifica uscita (Angolo alto destra)
+                if (event.type == SDL_FINGERDOWN && touch_x > 430 && touch_y < 50) running = false;
+
+            } else if (event.type == SDL_FINGERUP) {
+                touch_x = -1;
+                touch_y = -1;
             } else if (event.type == SDL_MOUSEMOTION) {
                 if (event.motion.state & SDL_BUTTON_LMASK) {
                     touch_x = event.motion.x;
@@ -268,6 +348,7 @@ int main(int argc, char* argv[]) {
     fclose(f_fb);
     if (font_large) TTF_CloseFont(font_large);
     if (font_small) TTF_CloseFont(font_small);
+    if (window) SDL_DestroyWindow(window);
     SDL_FreeSurface(screen);
     TTF_Quit();
     SDL_Quit();

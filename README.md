@@ -1,81 +1,123 @@
 # Display MQTT per Raspberry Pi su Schermo SPI
 
-Uno script Python per visualizzare i messaggi da un topic MQTT su un piccolo schermo SPI (es. 3.5") collegato a un Raspberry Pi. Il rendering avviene direttamente sul framebuffer della console, senza la necessità di un ambiente desktop.
+Un'applicazione per visualizzare i messaggi da un topic MQTT su un piccolo schermo SPI (es. 3.5") collegato a un Raspberry Pi. Il rendering avviene direttamente sul framebuffer della console, senza la necessità di un ambiente desktop.
 
 ![Schermata del progetto in azione](immagine.jpg)
 
 ## 📜 Descrizione
 
-Questo progetto è ideale per creare un piccolo display di stato o un monitor di dati per sistemi domotici o progetti IoT. Alla prima esecuzione, lo script guida l'utente nella configurazione dei parametri di connessione al broker MQTT, che vengono poi salvati in un file `config.json` per gli avvii successivi.
+Questo progetto è ideale per creare un piccolo display di stato o un monitor di dati per sistemi domotici o progetti IoT. Include due implementazioni con le stesse funzionalità: una in **Python** (`main.py`) e una in **C++** (`main.cpp`).
 
-Lo script è ottimizzato per funzionare in un ambiente minimale (Raspberry Pi OS Lite) e include workaround specifici per l'uso di `pygame` con il driver "dummy" e la scrittura diretta sul framebuffer a 16-bit.
+Entrambe le versioni sono ottimizzate per funzionare in un ambiente minimale (Raspberry Pi OS Lite) e includono workaround specifici per la scrittura diretta sul framebuffer.
 
 ## ✨ Funzionalità
 
 *   **Visualizzazione Dati MQTT**: Si connette a un broker MQTT e mostra in tempo reale i messaggi ricevuti su un topic specifico.
-*   **Configurazione Guidata**: Al primo avvio, richiede interattivamente i dati del server MQTT (IP, utente, password, topic).
-*   **Rendering senza Desktop**: Utilizza `pygame` per disegnare testo direttamente sul framebuffer (es. `/dev/fb1`), eliminando la necessità di un server X.
+*   **Configurazione Guidata**: Al primo avvio, richiede interattivamente i dati del server MQTT (IP, utente, password, topic) e li salva in `config.json`.
+*   **Rendering senza Desktop**: Utilizza `pygame` (Python) o `SDL2` (C++) per disegnare testo direttamente sul framebuffer (es. `/dev/fb1`), eliminando la necessità di un server X.
 *   **Ottimizzato per Schermi SPI**: Gestisce la profondità di colore a 16-bit (RGB565), comune per questi display.
-*   **Basso Consumo di Risorse**: Progettato per essere leggero e funzionare in background.
+*   **Interfaccia Touch**: Include un pulsante "X" per chiudere l'applicazione e un indicatore visivo del tocco.
+*   **Avvio Automatico**: Fornisce un file di servizio `systemd` per l'avvio automatico all'accensione.
 
-## 📋 Requisiti
+---
 
-*   Raspberry Pi (qualsiasi modello).
-*   Uno schermo SPI da 3.5" configurato per funzionare come dispositivo framebuffer (es. `/dev/fb1`).
-*   Sistema operativo Raspberry Pi OS (la versione Lite è sufficiente).
-*   Python 3.
-*   Librerie Python: `pygame` e `paho-mqtt`.
+## 🐍 Versione Python (`main.py`)
 
-## 🛠️ Installazione
+### Requisiti Python
 
-1.  **Clona il repository:**
-    ```bash
-    git clone <URL_DEL_TUO_REPOSITORY>
-    cd <NOME_DELLA_CARTELLA>
-    ```
+*   Python 3
+*   Librerie: `pygame`, `paho-mqtt`
 
-2.  **Installa le dipendenze:**
+### Installazione e Uso (Python)
+
+1.  **Installa le dipendenze:**
     ```bash
     sudo apt update
     sudo apt install python3-pygame python3-paho-mqtt
     ```
 
-3.  **Configura i permessi utente:**
-    Per permettere allo script di scrivere sul framebuffer e nascondere il cursore della console, l'utente deve far parte dei gruppi corretti.
+2.  **Configura i permessi utente:**
+    Per permettere allo script di scrivere sul framebuffer e leggere il touchscreen, l'utente deve far parte dei gruppi corretti.
     ```bash
-    sudo usermod -a -G tty $USER
-    sudo usermod -a -G video $USER
+    sudo usermod -a -G tty,video,input $USER
     ```
-    Dopo aver eseguito questi comandi, **è necessario riavviare il Raspberry Pi** per rendere effettive le modifiche.
+    Dopo aver eseguito questo comando, **è necessario riavviare il Raspberry Pi**.
 
-## ⚙️ Configurazione
+3.  **Esegui lo script:**
+    ```bash
+    python3 main.py
+    ```
+    Al primo avvio, seguirà una configurazione guidata.
 
-Al primo avvio dello script, ti verranno chiesti i dettagli per la connessione MQTT:
+---
 
-*   **Server MQTT (IP)**: L'indirizzo IP del tuo broker MQTT.
-*   **User**: L'username per l'autenticazione (lascia vuoto se non richiesto).
-*   **Password**: La password per l'autenticazione (lascia vuoto se non richiesta).
-*   **Topic da visualizzare**: Il topic MQTT a cui sottoscriversi.
+## C++ Versione (`main.cpp`)
 
-Queste informazioni verranno salvate nel file `config.json`. Se in futuro avrai bisogno di modificarle, potrai editare direttamente questo file.
+Questa versione offre prestazioni superiori e un consumo di risorse inferiore rispetto a Python.
 
-## 🚀 Utilizzo
+### Requisiti C++
 
-Esegui lo script direttamente dalla console del tuo Raspberry Pi:
+*   Librerie di sviluppo: `build-essential`, `libsdl2-dev`, `libsdl2-ttf-dev`, `libpaho-mqtt-dev`, `nlohmann-json3-dev`
 
+### Installazione e Compilazione (C++)
+
+1.  **Installa le dipendenze:**
+    ```bash
+    sudo apt update
+    sudo apt install build-essential libsdl2-dev libsdl2-ttf-dev libpaho-mqtt-dev nlohmann-json3-dev fonts-dejavu-core
+    ```
+
+2.  **Configura i permessi utente** (se non già fatto per la versione Python):
+    ```bash
+    sudo usermod -a -G tty,video,input $USER
+    ```
+    **Riavvia il Raspberry Pi** dopo aver eseguito il comando.
+
+3.  **Compila il programma:**
+    Il progetto include un `Makefile` che semplifica la compilazione. Esegui semplicemente:
+    ```bash
+    make
+    ```
+
+### Utilizzo (C++)
+
+Dopo la compilazione, esegui il programma:
 ```bash
-python3 main.py
+sudo ./main
 ```
+Se il file `config.json` non esiste, verrà avviata la procedura di configurazione guidata.
 
-Lo schermo inizierà a mostrare i messaggi provenienti dal topic MQTT configurato. Per terminare l'esecuzione, premi `CTRL+C` nella console.
+---
+
+## ⚙️ Avvio Automatico con `systemd` (Consigliato per C++)
+
+Per far partire il display automaticamente all'accensione del Raspberry Pi, puoi usare il file di servizio `systemd` incluso.
+
+1.  **Installa il servizio:**
+    Questo comando compila il programma (se necessario) e copia il file `.service` nella cartella di sistema.
+    ```bash
+    make install
+    ```
+
+2.  **Abilita e avvia il servizio:**
+    ```bash
+    sudo systemctl enable --now mqtt-display.service
+    ```
+
+### Comandi Utili per il Servizio
+
+*   **Vedere lo stato:** `sudo systemctl status mqtt-display.service`
+*   **Vedere i log:** `journalctl -u mqtt-display.service -f`
+*   **Fermare il servizio:** `sudo systemctl stop mqtt-display.service`
+*   **Riavviare il servizio:** `sudo systemctl restart mqtt-display.service`
 
 ## 🔧 Troubleshooting
 
 *   **"Errore: Dispositivo /dev/fb1 non trovato"**:
-    Questo errore indica che lo schermo non è stato rilevato all'indirizzo previsto. Verifica che i driver dello schermo siano installati e attivi. Prova a modificare la riga `f_fb = open("/dev/fb1", "wb")` in `main.py` con `/dev/fb0`.
+    Lo schermo non è rilevato all'indirizzo previsto. Verifica che i driver dello schermo siano installati e attivi. Potrebbe essere necessario modificare il codice per usare `/dev/fb0`.
 
-*   **"Errore permessi: Impossibile scrivere su /dev/fb1"**:
-    L'utente con cui esegui lo script non ha i permessi di scrittura sul framebuffer. Assicurati di aver aggiunto l'utente al gruppo `video` come descritto nella sezione "Installazione" e di aver riavviato.
+*   **"Errore permessi" / Il Touch non funziona**:
+    L'utente non ha i permessi necessari. Assicurati di aver aggiunto l'utente ai gruppi `video`, `tty` e `input` e di aver **riavviato** il sistema.
 
-*   **Sfarfallio del cursore o testo della console visibile sotto la grafica**:
-    Questo accade se lo script non riesce a nascondere il cursore della TTY. Assicurati di aver aggiunto il tuo utente al gruppo `tty` e di aver riavviato il sistema.
+*   **Il programma non parte come servizio (errore 203/EXEC)**:
+    Verifica che i percorsi nel file `mqtt-display.service` (`ExecStart` e `WorkingDirectory`) siano corretti, specialmente se contengono spazi (in quel caso, usa le virgolette).
