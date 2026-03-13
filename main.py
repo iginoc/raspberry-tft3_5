@@ -2,7 +2,53 @@
 import os
 import sys
 import time
+import json
 import pygame
+try:
+    import paho.mqtt.client as mqtt
+except ImportError:
+    print("Errore: Libreria 'paho-mqtt' mancante. Installa con 'sudo apt install python3-paho-mqtt'")
+    sys.exit(1)
+
+# --- Configurazione MQTT ---
+CONFIG_FILE = "config.json"
+mqtt_message = "In attesa di dati..."
+
+def on_message(client, userdata, msg):
+    global mqtt_message
+    try:
+        mqtt_message = msg.payload.decode()
+    except:
+        mqtt_message = str(msg.payload)
+
+if not os.path.exists(CONFIG_FILE):
+    print("\n--- Configurazione MQTT Primo Avvio ---")
+    c_server = input("Server MQTT (IP): ").strip()
+    c_user = input("User (invio per nessuno): ").strip()
+    c_pw = input("Password (invio per nessuno): ").strip()
+    c_topic = input("Topic da visualizzare: ").strip()
+    
+    config = {"server": c_server, "user": c_user, "password": c_pw, "topic": c_topic}
+    with open(CONFIG_FILE, "w") as f:
+        json.dump(config, f)
+    print("Configurazione salvata.\n")
+else:
+    with open(CONFIG_FILE, "r") as f:
+        config = json.load(f)
+
+# --- Avvio Client MQTT ---
+client = mqtt.Client()
+if config["user"]:
+    client.username_pw_set(config["user"], config["password"])
+
+try:
+    client.connect(config["server"], 1883, 60)
+    client.subscribe(config["topic"])
+    client.on_message = on_message
+    client.loop_start()
+except Exception as e:
+    mqtt_message = "Err MQTT"
+    print(f"Errore connessione MQTT: {e}")
 
 # --- Configurazione Ambiente ---
 # Imposta il driver video su framebuffer console
@@ -82,8 +128,8 @@ try:
         screen.fill(BLACK)
 
         # 2. Crea le superfici di testo
-        text_title = font_large.render("Raspberry Pi", True, WHITE)
-        text_info = font_small.render("Modalità Console", True, RED)
+        text_title = font_small.render(f"Topic: {config['topic']}", True, WHITE)
+        text_info = font_large.render(mqtt_message, True, RED)
 
         # 3. Calcola la posizione per centrare il testo
         rect_title = text_title.get_rect(center=(WIDTH // 2, HEIGHT // 2 - 30))
